@@ -50,6 +50,7 @@ const allowedCubeMax = {
 }
 
 let count = 0;
+let minPowersTotal = 0;
 const gameRegex = new RegExp('^game ([0-9]+): ((([^;]+)(;|\n)?)+)$', 'i');
 const gameSplitterRegex = new RegExp('(([0-9]+ green|[0-9]+ red|[0-9]+ blue)+,? ?)+(;|$)', 'ig');
 const pullSplitterRegex = new RegExp('([0-9]+) (green|red|blue)', 'ig');
@@ -77,13 +78,13 @@ const calculateGameOutcome = (line) => {
           case 'red':
             if (cubeCount > maxRed) {
               maxRed = cubeCount;
-              break;
             }
+            break;
           case 'blue':
             if (cubeCount > maxBlue) {
               maxBlue = cubeCount;
-              break;
             }
+            break;
           case 'green':
             if (cubeCount > maxGreen) {
               maxGreen = cubeCount;
@@ -112,7 +113,9 @@ file.split('\n')
   .forEach((line) => {
     const discoveredCubeMax = calculateGameOutcome(line);
     if (discoveredCubeMax.gameId > 0) {
-      const baseGameLog = `Game ${discoveredCubeMax.gameId} - Red ${discoveredCubeMax.red}/${allowedCubeMax.red} - Blue ${discoveredCubeMax.blue}/${allowedCubeMax.blue} - Green ${discoveredCubeMax.green}/${allowedCubeMax.green}`;
+      let minCubesPower = (discoveredCubeMax.red * discoveredCubeMax.green * discoveredCubeMax.blue);
+      minPowersTotal += minCubesPower;
+      const baseGameLog = `Game ${discoveredCubeMax.gameId} - Red ${discoveredCubeMax.red}/${allowedCubeMax.red} - Blue ${discoveredCubeMax.blue}/${allowedCubeMax.blue} - Green ${discoveredCubeMax.green}/${allowedCubeMax.green} - Power ${minCubesPower} - Total power ${minPowersTotal}`;
       if (testGameValid(discoveredCubeMax, allowedCubeMax)) {
         count += discoveredCubeMax.gameId;
         debugLine(`${baseGameLog} - VALID - Count ${count}`);
@@ -122,4 +125,6 @@ file.split('\n')
     }
   });
 
-console.log(count);
+console.log(`Powers - ${minPowersTotal}`);
+console.log(`Valid count - ${count}`);
+
