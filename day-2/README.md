@@ -1,4 +1,4 @@
-# Day 1 - Cube Conundrum
+# Day 2 - Cube Conundrum
 
 This is a simple script which operates on an input file with the following requirements:
 
