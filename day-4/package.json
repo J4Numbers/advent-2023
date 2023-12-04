@@ -1,0 +1,26 @@
+{
+  "name": "j4numbers-advent-day-4",
+  "version": "1.0.0",
+  "description": "Advent of code solution day 4",
+  "main": "bin/app.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/j4numbers/advent-2023.git"
+  },
+  "keywords": [
+    "Advent-of-code"
+  ],
+  "author": "J4Numbers <j4numbers@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/j4numbers/advent-2023/issues"
+  },
+  "homepage": "https://github.com/j4numbers/advent-2023#readme",
+  "dependencies": {
+    "yargs": "^17.7.2"
+  }
+}
