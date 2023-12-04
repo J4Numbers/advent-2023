@@ -32,25 +32,38 @@ const args = argsEngine.wrap(argsEngine.terminalWidth())
 const debug = args.debug;
 let lineCount = 1;
 let count = 0;
+
+// Used for numeric-only searching
 const twoDigitRegexTest = new RegExp('^[^0-9]*([0-9]).*([0-9])[^0-9]*$', 'i');
 const oneDigitRegexTest = new RegExp('^[^0-9]*([0-9])[^0-9]*$', 'i');
 
-
+// Used for literal searching - generating a set of standard literal searches...
 const literalNumbers = 'one|two|three|four|five|six|seven|eight|nine';
-const reversedLiteralNumbers = literalNumbers.split('').reverse().join('');
 const literalOptions = `([0-9]|${literalNumbers})`;
-const reversedLiteralOptions = `([0-9]|${reversedLiteralNumbers})`;
-
 const literalRegex = new RegExp(literalOptions, 'i');
+
+// And reversed literal searches...
+const reversedLiteralNumbers = literalNumbers.split('').reverse().join('');
+const reversedLiteralOptions = `([0-9]|${reversedLiteralNumbers})`;
 const reversedLiteralRegex = new RegExp(reversedLiteralOptions, 'i');
 
-
+/**
+ * @param line - Print this line if console debug is enabled
+ */
 const debugLine = (line) => {
   if (debug) {
     console.log(line);
   }
 };
 
+/**
+ * Translate a literal text number into its numeric value. The literal text can
+ * be normal or reversed.
+ *
+ * @param literal - the literal text of a number to be translated into a numeral
+ * @returns A numeral value of the provided literal, or 0 if no translation could
+ * be found
+ */
 const transformLiteral = (literal) => {
   let value = '0';
   switch (literal) {
@@ -93,6 +106,15 @@ const transformLiteral = (literal) => {
   return value;
 };
 
+/**
+ * Run a test on a provided line to extract the first and last numerals from
+ * that line and return their joined value. If there is only one numeric value
+ * on a line, then return that one value twice over (i.e. 11, 22, etc.).
+ *
+ * @param line - the line to search for numerals in
+ * @returns a two-digit number made of the first numeral that appears in the
+ * string and the last numeral that appears in the string
+ */
 const testDigits = (line) => {
   const output = twoDigitRegexTest.exec(line);
   let value = 0;
@@ -107,6 +129,19 @@ const testDigits = (line) => {
   return value;
 };
 
+/**
+ * With literal numbers (i.e. one, two, etc.), alongside numeric numbers (1, 2, etc),
+ * the previous method of one regex string to rule them all (tm) is no-longer usable
+ * (or, at least, isn't tenable). Instead, we follow the same rule as before, just more
+ * explicitly...
+ *
+ * For the first digit, we find the first occurence in the string of 0-9 or one-nine, and
+ * use that. For the second digit, we then reverse the string and find the first occurence
+ * of 0-9 or eno-enin - then use that as the last occuring number in each line.
+ *
+ * @param line - The line that we are inspecting for all of our numbers
+ * @returns A two digit number made up of the first and last numbers in the given line
+ */
 const testLiterals = (line) => {
   const firstDigit = literalRegex.exec(line);
   let digitOne = '0';
@@ -132,17 +167,24 @@ const testLiterals = (line) => {
   return value;
 };
 
+// MAIN CODE STARTS HERE
+
+// Read individual lines of the file one by one
 const file = fs.readFileSync(args.input).toString('utf-8');
 file.split('\n')
   .forEach((line) => {
     let outValue = 0;
+    // If we're operating on digits-only, run that function
     if (args.mode === 'digits') {
       outValue = testDigits(line);
     }
+    // And if we're on literals, choose that function instead
     if (args.mode === 'literals') {
       outValue = testLiterals(line);
     }
     count += outValue;
+
+    // Debug line and increment working variables
     debugLine(`Line ${lineCount} - ${line} - Found ${outValue} - Running ${count}`);
     lineCount += 1;
   });
