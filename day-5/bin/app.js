@@ -54,6 +54,18 @@ const debugLine = (line) => {
   }
 };
 
+/**
+ * Convert the line containing all of our seeds to the list of seeds that
+ * we will iterate over later in this program. Depending on the mode of
+ * operation, this will either return a simple array of seed values, or will
+ * pair each seed with a range that it can contain. This range is bounded
+ * by the split option on the program that allows us to not just run out
+ * of memory immediately.
+ *
+ * @param line - The line containing a list of seeds that we will extract
+ * @returns A collection of extracted seeds (and potential ranges from that
+ * seed
+ */
 const retrieveSeeds = (line) => {
   const seedList = [];
   let seedPointer;
@@ -88,6 +100,20 @@ const retrieveSeeds = (line) => {
   return seedList;
 };
 
+
+/**
+ * Given the source value and the set of ranges to look up its corresponding
+ * destination within, return the destination value accordingly. This is going
+ * to be the same as the source value if no ranges match the source value, or
+ * the corresponding destination value in one of our ranges.
+ *
+ * @param sourceVal - Our input field that will fit inside at most one of our
+ *                    range lookups
+ * @param rangeLookups - A list of range lookups containing source-to-destination
+ *                       mapping details that we can use to translate our source
+ *                       into its destination
+ * @returns The corresponding destination value to our source value
+ */
 const calculateDestinationValue = (sourceVal, rangeLookups) => {
   let foundVal = sourceVal;
   const validRanges = rangeLookups.filter((range) => range.sourceStartIndex <= sourceVal
@@ -102,6 +128,8 @@ const calculateDestinationValue = (sourceVal, rangeLookups) => {
 
 // MAIN CODE STARTS HERE
 
+// Set up lookup maps for the word translations from seed to location, and all the
+// range values from a given source
 const lookupTranslation = {};
 const lookupMaps = {};
 let currentMapIndex;
@@ -110,21 +138,30 @@ let seedLookupList;
 let seedListFound = false;
 
 // For each line in the provided file...
+// Build up the seed to location map and all its steps
 const file = fs.readFileSync(args.input).toString('utf-8');
 file.split('\n')
   .forEach((line) => {
+    // Extract out the seed line if we don't already have one
     if (!seedListFound) {
       if (seedLine.test(line)) {
         seedLookupList = retrieveSeeds(line);
         seedListFound = !seedListFound;
       }
     }
+
+    // Start a new mapping relationship when we discover the details
+    // of one, including the translation, setting up a new range array,
+    // and updating the map index for any future range lookup values
     const mappingTest = mapLookup.exec(line);
     if (mappingTest !== null) {
       lookupTranslation[mappingTest[1]] = mappingTest[2];
       lookupMaps[mappingTest[1]] = [];
       currentMapIndex = mappingTest[1];
     }
+
+    // Add the details of any range addresses when we find them to the current
+    // map index for the future calculation
     const rangeTest = rangeLookup.exec(line);
     if (rangeTest !== null) {
       lookupMaps[currentMapIndex].push({
@@ -135,15 +172,23 @@ file.split('\n')
     }
   });
 
+// Set up a working variable for our end location
 let currentMinLocation;
 
+// For each of the seeds that we have discovered...
 seedLookupList.forEach((seed) => {
   const seedDiary = [{ seed: seed.startVal }];
+  // If we are operating over a range of seeds, expand this seed into all
+  // of its possible ranges...
   if (Object.keys(seed).includes('range')) {
     for (let i=1; i<seed.range; ++i) {
       seedDiary.push({ seed: seed.startVal + i });
     }
   };
+
+  // For each seed, perform a translation lookup until we reach the final translation
+  // as described in our translation dictionary, building up the translation until there
+  // are no more translations to look up.
   seedDiary.forEach((entry) => {
     let workingType = 'seed';
     while (Object.keys(lookupTranslation).includes(workingType)) {
@@ -151,6 +196,9 @@ seedLookupList.forEach((seed) => {
       debugLine(`Seed ${entry['seed']} - ${workingType} ${entry[workingType]} -> ${lookupTranslation[workingType]} ${entry[lookupTranslation[workingType]]}`);
       workingType = lookupTranslation[workingType];
     }
+
+    // If our current seed has a lower location value than the one we currently have
+    // stored, then update it and move on
     if (!currentMinLocation || entry.location < currentMinLocation.location) {
       currentMinLocation = entry;
     }
