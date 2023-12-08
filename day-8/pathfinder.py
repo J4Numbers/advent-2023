@@ -18,7 +18,7 @@ from functools import reduce
 
 PARSER_DESC = "Calculate the directions required to travel from AAA to ZZZ"
 DIRECTIONS_REGEX = "^[LR]+$"
-NODE_REGEX = "^([a-z]{3}) = \(([a-z]{3}), ([a-z]{3})\)$"
+NODE_REGEX = "^([0-9a-z]{3}) = \(([0-9a-z]{3}), ([0-9a-z]{3})\)$"
 START_NODE = "AAA"
 END_NODE = "ZZZ"
 
@@ -28,7 +28,7 @@ parser.add_argument(
     "--input", "-i",
     help="The input file to provide to the script", required=True)
 parser.add_argument(
-    "--mode", choices=["seek"], default="seek",
+    "--mode", choices=["seek", "haunt"], default="seek",
     help="The mode of operation for the program")
 parser.add_argument("--debug", action="store_true",
                     help="Enable debug logging")
@@ -47,16 +47,47 @@ def debug_line(line_to_print):
 
 
 def follow_path(start_nodes, target_nodes, map_of_nodes, directions):
-    working_node = start_nodes[0]
-    dir_idx = 0
-    hops = 0
-    while working_node not in target_nodes:
-        hops += 1
-        prev_node = working_node
-        working_node = map_of_nodes[working_node][0 if directions[dir_idx] == "L" else 1]
-        debug_line(f"Going {directions[dir_idx]} from {prev_node} to {working_node} - {hops}")
-        dir_idx = (dir_idx + 1) % len(directions)
-    return hops
+    common_candidate = 0
+    voters_agree = []
+    last_pos = {}
+
+    while len(voters_agree) < len(start_nodes):
+        for s_node in start_nodes:
+            if s_node not in voters_agree:
+                debug_line(f"{s_node} :: Not found in voter agreement... Attempting to match candidate of {common_candidate}")
+                if s_node in last_pos:
+                    dir_idx = last_pos[s_node]["idx"]
+                    working_node = last_pos[s_node]["node"]
+                    hops = last_pos[s_node]["hops"]
+                else:
+                    dir_idx = 0
+                    working_node = s_node
+                    hops = 0
+                debug_line(f"{s_node} :: Starting from {working_node} - IDX {dir_idx} - {hops}")
+
+                while working_node not in target_nodes or hops < common_candidate:
+                    hops += 1
+                    prev_node = working_node
+                    working_node = map_of_nodes[working_node][0 if directions[dir_idx] == "L" else 1]
+                    # debug_line(f"{s_node} :: Going {directions[dir_idx]} from {prev_node} to {working_node} - {hops}")
+                    dir_idx = (dir_idx + 1) % len(directions)
+
+                if common_candidate == hops:
+                    voters_agree.append(s_node)
+                    debug_line(f"{s_node} :: Matched candidate {common_candidate} on {working_node} - {len(start_nodes) - len(voters_agree)} voters left")
+                else:
+                    voters_agree = [s_node]
+                    common_candidate = hops
+                    debug_line(f"{s_node} :: New candidate {common_candidate} on {working_node} - {len(start_nodes) - len(voters_agree)} voters left")
+
+                last_pos[s_node] = {
+                    "node": working_node,
+                    "idx": dir_idx,
+                    "hops": hops
+                }
+
+    print(last_pos)
+    return common_candidate
 
 
 # MAIN CODE STARTS HERE
@@ -80,13 +111,15 @@ if args.input:
 start_nodes = []
 end_nodes = []
 
+print(node_map)
+
 if args.mode == "haunt":
-    start_nodes = filter(lambda n: n.endswith("A"), node_map.keys())
-    end_nodes = filter(lambda n: n.endswith("Z"), node_map.keys())
+    start_nodes = list(filter(lambda n: n.endswith("A"), node_map.keys()))
+    end_nodes = list(filter(lambda n: n.endswith("Z"), node_map.keys()))
 else:
     start_nodes = [START_NODE]
-    end_node = [END_NODE]
+    end_nodes = [END_NODE]
 
-path = follow_path(start_nodes, END_NODE, node_map, dir_line)
+path = follow_path(start_nodes, end_nodes, node_map, dir_line)
 print(path)
 
