@@ -8,13 +8,14 @@ ZZZ in the fewest number of directions (where the leftmost direction is L and
 the rightmost direction is R).
 
 This script operates in two modes - 'seek', which is the original mode of
-simply following directions, or 'jokers', where J is jokers, which can fill in for any
-other card at the cost of losing all high card battles.
+simply following directions, or 'haunt', which treats all nodes ending in A as
+starting nodes, and all nodes ending in Z as target nodes. Searching for the
+first common point.
 """
 import argparse
 import re
 
-from functools import reduce
+from math import lcm
 
 PARSER_DESC = "Calculate the directions required to travel from AAA to ZZZ"
 DIRECTIONS_REGEX = "^[LR]+$"
@@ -47,47 +48,49 @@ def debug_line(line_to_print):
 
 
 def follow_path(start_nodes, target_nodes, map_of_nodes, directions):
-    common_candidate = 0
-    voters_agree = []
-    last_pos = {}
+    """
+    Given a list of start nodes and a list of potential target nodes, follow
+    a given set of directions across a given graph to calculate the number of
+    steps required to get from an individual starting node to any target node
+    within our inputs.
 
-    while len(voters_agree) < len(start_nodes):
-        for s_node in start_nodes:
-            if s_node not in voters_agree:
-                debug_line(f"{s_node} :: Not found in voter agreement... Attempting to match candidate of {common_candidate}")
-                if s_node in last_pos:
-                    dir_idx = last_pos[s_node]["idx"]
-                    working_node = last_pos[s_node]["node"]
-                    hops = last_pos[s_node]["hops"]
-                else:
-                    dir_idx = 0
-                    working_node = s_node
-                    hops = 0
-                debug_line(f"{s_node} :: Starting from {working_node} - IDX {dir_idx} - {hops}")
+    If we run out of steps in the directions to follow, we start again from
+    scratch.
+    :param start_nodes: A list of starting nodes that we will begin our search
+                        from.
+    :param target_nodes: A list of target nodes that any node can count as
+                         their destination.
+    :param map_of_nodes: A complete dictionary of nodes which map onto two
+                         edges which describes the possible paths within this
+                         system.
+    :param directions: A list of L/R directions that describe which of the
+                       edges in a node graph we will take at any one time.
+    :returns: A map of starting nodes against how long it took to reach any
+    target node within our system, along with what that target node
+    specifically was.
+    """
+    first_multiples = {}
 
-                while working_node not in target_nodes or hops < common_candidate:
-                    hops += 1
-                    prev_node = working_node
-                    working_node = map_of_nodes[working_node][0 if directions[dir_idx] == "L" else 1]
-                    # debug_line(f"{s_node} :: Going {directions[dir_idx]} from {prev_node} to {working_node} - {hops}")
-                    dir_idx = (dir_idx + 1) % len(directions)
+    for s_node in start_nodes:
+        dir_idx = 0
+        working_node = s_node
+        hops = 0
+        debug_line(f"{s_node} :: Starting from {working_node} - IDX {dir_idx} - {hops}")
 
-                if common_candidate == hops:
-                    voters_agree.append(s_node)
-                    debug_line(f"{s_node} :: Matched candidate {common_candidate} on {working_node} - {len(start_nodes) - len(voters_agree)} voters left")
-                else:
-                    voters_agree = [s_node]
-                    common_candidate = hops
-                    debug_line(f"{s_node} :: New candidate {common_candidate} on {working_node} - {len(start_nodes) - len(voters_agree)} voters left")
+        while working_node not in target_nodes:
+            hops += 1
+            prev_node = working_node
+            working_node = map_of_nodes[working_node][0 if directions[dir_idx] == "L" else 1]
+            debug_line(f"{s_node} :: Going {directions[dir_idx]} from {prev_node} to {working_node} - {hops}")
+            dir_idx = (dir_idx + 1) % len(directions)
 
-                last_pos[s_node] = {
-                    "node": working_node,
-                    "idx": dir_idx,
-                    "hops": hops
-                }
+        first_multiples[s_node] = {
+            "node": working_node,
+            "idx": dir_idx,
+            "hops": hops
+        }
 
-    print(last_pos)
-    return common_candidate
+    return first_multiples
 
 
 # MAIN CODE STARTS HERE
@@ -96,8 +99,9 @@ def follow_path(start_nodes, target_nodes, map_of_nodes, directions):
 dir_line = []
 node_map = {}
 
-# For each line in the file, we extract the hand of cards and their points
-# that are associated with them and add them onto a working tuple array.
+# For each line in the file, we extract the node and its two edges, along
+# with the one line which describes our allowed directions when traversing
+# the graph
 if args.input:
     with open(args.input, encoding="utf-8") as fp:
         for line in fp:
@@ -108,18 +112,25 @@ if args.input:
                 node_map[line_discovery.group(1)] = (
                         line_discovery.group(2), line_discovery.group(3))
 
-start_nodes = []
-end_nodes = []
+# Some working variables for the start and end locations
+starting_nodes = []
+ending_nodes = []
 
-print(node_map)
-
+# If we're haunting, we're going over all nodes that end in A with all nodes
+# that end in Z as a target. Otherwise it's simply AAA -> ZZZ
 if args.mode == "haunt":
-    start_nodes = list(filter(lambda n: n.endswith("A"), node_map.keys()))
-    end_nodes = list(filter(lambda n: n.endswith("Z"), node_map.keys()))
+    starting_nodes = list(filter(lambda n: n.endswith("A"), node_map.keys()))
+    ending_nodes = list(filter(lambda n: n.endswith("Z"), node_map.keys()))
 else:
-    start_nodes = [START_NODE]
-    end_nodes = [END_NODE]
+    starting_nodes = [START_NODE]
+    ending_nodes = [END_NODE]
 
-path = follow_path(start_nodes, end_nodes, node_map, dir_line)
-print(path)
+# Follow the paths
+paths = follow_path(starting_nodes, ending_nodes, node_map, dir_line)
 
+# Debug out what we found in the paths
+for start_node, path in paths.items():
+    debug_line(f"{start_node} :: Reached {path['node']} after {path['hops']} hops")
+
+# Print the final result
+print(lcm(*list(map(lambda p: p["hops"], paths.values()))))
