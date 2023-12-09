@@ -8,4 +8,4 @@ well documented depending on the option in question.
 Languages included so far:
 
 * Javascript (Days 1, 2, 3, 4, and 5)
-* Python (Days 6, 7, 8)
+* Python (Days 6, 7, 8, 9)
