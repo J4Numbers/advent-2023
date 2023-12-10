@@ -1,4 +1,4 @@
-# Day 7 - Pipe Maze
+# Day 10 - Pipe Maze
 
 This is a simple script which operates on an input file with the following requirements:
 
@@ -42,6 +42,28 @@ Leaving us with an answer of `4` as the maximum number of steps one can take wit
 
 ## Part two
 
+In addition to the above, we also want to know the number of squares that have been completely
+enclosed by the loop. This is not quite as easy as it sounds, however, as the flood algorithm
+also needs to consider that `||` is a valid escape.
+
+For example:
+
+```text
+..........
+.S------7.
+.|F----7|.
+.||OOOO||.
+.||OOOO||.
+.|L-7F-J|.
+.|II||II|.
+.L--JL--J.
+..........
+```
+
+While the bottom 4 squares marked as `I` are inside the loop, the eight squares marked as `O`
+are able to escape through the double-pipe sets at the bottom as none of them directly cross
+over the gap.
+
 ## This script
 
 This script uses Python and can be run with the following command:
@@ -50,4 +72,4 @@ This script uses Python and can be run with the following command:
 python maze_runner.py -i input.txt
 ```
 
-This will answer part one of the question as described above.
+This will answer part one and part 2 of the question as described above.
