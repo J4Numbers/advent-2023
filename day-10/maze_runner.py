@@ -88,6 +88,32 @@ def remap_direction(pipe):
     return directions
 
 
+def map_to_pipe(directions):
+    """
+    Map a set of directions to the pipe value that fits them - essentially
+    reverse engineering the above function.
+    :param directions: A set of directions that can be taken from a given
+                       pipe.
+    :return: The pipe value that those directions correspond to
+    """
+    pipe = '.'
+    if (0, 1) in directions:  # R
+        if (0, -1) in directions:  # L
+            pipe = '-'
+        elif (1, 0) in directions:  # D
+            pipe = 'F'
+        elif (-1, 0) in directions:  # U
+            pipe = 'L'
+    elif (0, -1) in directions:  # L
+        if (1, 0) in directions:  # D
+            pipe = '7'
+        elif (-1, 0) in directions:  # U
+            pipe = 'J'
+    elif (1, 0) in directions and (-1, 0) in directions:  # UD
+        pipe = '|'
+    return pipe
+
+
 def reverse(direction):
     """
     Reverse the direction of a given vector - turning L to R and U to D.
@@ -139,6 +165,198 @@ def get_next_point(maze_copy, start_pos, current_loop):
     return add_coords(start_pos, next_step)
 
 
+def test_escaped(maze_copy, test_pos):
+    return (test_pos[0] <= 0
+            or test_pos[1] <= 0
+            or test_pos[0] >= len(maze_copy) - 1
+            or test_pos[1] >= len(maze_copy[0]) - 1)
+
+
+def test_escaped_on_circuit(maze_copy, test_pos, approach):
+    pipe = get_map_point(maze_copy, test_pos)
+    if pipe == 'S':
+        pipe = map_to_pipe(get_valid_directions(maze_copy, test_pos))
+
+    allowed = []
+    if pipe == '|':
+        allowed.append((0, -1) if 'R' in list(approach["qual"]) else (0, 1))
+    if pipe == '-':
+        allowed.append((1, 0) if 'U' in list(approach["qual"]) else (-1, 0))
+    if pipe == '7' and approach["qual"] != 'UR':
+        allowed.append((-1, 0))
+        allowed.append((0, 1))
+    if pipe == 'J' and approach["qual"] != "DR":
+        allowed.append((1, 0))
+        allowed.append((0, 1))
+    if pipe == 'L' and approach["qual"] != "DL":
+        allowed.append((1, 0))
+        allowed.append((0, -1))
+    if pipe == 'F' and approach["qual"] != "UL":
+        allowed.append((-1, 0))
+        allowed.append((0, -1))
+
+    escapeable = False
+    for vect in allowed:
+        escape_pos = add_coords(test_pos, vect)
+        if escape_pos[0] < 0 or escape_pos[1] < 0\
+            or escape_pos[0] >= len(maze_copy) or escape_pos[1] >= len(maze_copy[0]):
+            escapeable = True
+
+    return escapeable
+
+
+def consider_valid_flood_options(maze_copy, seen_nodes, seen_pipes, potential_directions):
+    valid_directions = []
+    for test_dir in potential_directions:
+        test_pos = add_coords(test_dir["pos"], test_dir["dir"])
+        if test_pos in seen_nodes:
+            continue
+        if { "pos": test_pos, "approach": test_dir["qual"] } in seen_pipes:
+            continue
+        if (test_pos[0] < 0
+                or test_pos[1] < 0
+                or test_pos[0] > len(maze_copy) - 1
+                or test_pos[1] > len(maze_copy[0]) - 1):
+            continue
+        valid_directions.append(test_dir)
+    return valid_directions
+
+
+def translate_circuit_flood_options(circuit_pipe, pos, approach):
+    """
+    I admit, this _hurts_... But it works... So, let's split a pipe into four quadrants and
+    say that a direction is approaching in one of those four quadrants in some combination of
+    up/down and left/right.
+
+    :param circuit_pipe: The type of pipe we're converting into directions
+    :param pos: The position of the pipe in the maze
+    :param approach: The direction we're taking to reach the pipe
+    :return: A list of possible directions that can be taken from this pipe
+    with the given approach vector
+    """
+    directions = []
+    if circuit_pipe == "|":
+        if "L" in list(approach["qual"]):
+            directions.append({"pos": pos, "dir": (0, 1), "qual": "R"})
+            directions.append({"pos": pos, "dir": (1, 0), "qual": "DL"})
+            directions.append({"pos": pos, "dir": (-1, 0), "qual": "UL"})
+        else:
+            directions.append({"pos": pos, "dir": (0, -1), "qual": "L"})
+            directions.append({"pos": pos, "dir": (1, 0), "qual": "DR"})
+            directions.append({"pos": pos, "dir": (-1, 0), "qual": "UR"})
+    if circuit_pipe == "-":
+        if "U" in list(approach["qual"]):
+            directions.append({"pos": pos, "dir": (1, 0), "qual": "D"})
+            directions.append({"pos": pos, "dir": (0, 1), "qual": "UR"})
+            directions.append({"pos": pos, "dir": (0, -1), "qual": "UL"})
+        else:
+            directions.append({"pos": pos, "dir": (-1, 0), "qual": "U"})
+            directions.append({"pos": pos, "dir": (0, 1), "qual": "DR"})
+            directions.append({"pos": pos, "dir": (0, -1), "qual": "DL"})
+    if circuit_pipe == "7":
+        if approach["qual"] == "UR":
+            directions.append({"pos": pos, "dir": (1, 0), "qual": "DR"})
+            directions.append({"pos": pos, "dir": (0, -1), "qual": "UL"})
+        else:
+            directions.append({"pos": pos, "dir": (-1, 0), "qual": "U"})
+            directions.append({"pos": pos, "dir": (0, 1), "qual": "R"})
+            directions.append({"pos": pos, "dir": (1, 0), "qual": "DL"})
+            directions.append({"pos": pos, "dir": (0, -1), "qual": "DL"})
+    if circuit_pipe == "J":
+        if approach["qual"] == "DR":
+            directions.append({"pos": pos, "dir": (-1, 0), "qual": "UR"})
+            directions.append({"pos": pos, "dir": (0, -1), "qual": "DL"})
+        else:
+            directions.append({"pos": pos, "dir": (1, 0), "qual": "D"})
+            directions.append({"pos": pos, "dir": (0, 1), "qual": "R"})
+            directions.append({"pos": pos, "dir": (-1, 0), "qual": "UL"})
+            directions.append({"pos": pos, "dir": (0, -1), "qual": "UL"})
+    if circuit_pipe == "L":
+        if approach["qual"] == "DL":
+            directions.append({"pos": pos, "dir": (-1, 0), "qual": "UL"})
+            directions.append({"pos": pos, "dir": (0, 1), "qual": "DR"})
+        else:
+            directions.append({"pos": pos, "dir": (1, 0), "qual": "D"})
+            directions.append({"pos": pos, "dir": (0, -1), "qual": "L"})
+            directions.append({"pos": pos, "dir": (-1, 0), "qual": "UR"})
+            directions.append({"pos": pos, "dir": (0, 1), "qual": "UR"})
+    if circuit_pipe == "F":
+        if approach["qual"] == "UL":
+            directions.append({"pos": pos, "dir": (1, 0), "qual": "DL"})
+            directions.append({"pos": pos, "dir": (0, 1), "qual": "UR"})
+        else:
+            directions.append({"pos": pos, "dir": (-1, 0), "qual": "U"})
+            directions.append({"pos": pos, "dir": (0, -1), "qual": "L"})
+            directions.append({"pos": pos, "dir": (1, 0), "qual": "DR"})
+            directions.append({"pos": pos, "dir": (0, 1), "qual": "DR"})
+    return directions
+
+
+def attempt_escape(maze_copy, start_pos, circuit, trapped_nodes, free_nodes, trapped_pipes, free_pipes):
+    escaped = False
+    pathway = [start_pos]
+    considered_pipes = []
+    options = consider_valid_flood_options(maze_copy, pathway, considered_pipes, [
+        {"pos": start_pos, "dir": (0, 1), "qual": "R"},
+        {"pos": start_pos, "dir": (0, -1), "qual": "L"},
+        {"pos": start_pos, "dir": (1, 0), "qual": "D"},
+        {"pos": start_pos, "dir": (-1, 0), "qual": "U"}
+    ])
+    test_pos = start_pos
+    test_pipe = None
+
+    debug_line(f"Running new escape attempt on {start_pos} "
+               f"- {len(trapped_nodes)} confirmed trapped nodes "
+               f"- {len(free_pipes)} confirmed free nodes "
+               f"- {len(trapped_pipes)} confirmed trapped pipe approaches "
+               f"- {len(free_pipes)} confirmed free pipe approaches")
+
+    while len(options) > 0:
+        debug_line(f"{len(options)} potential options remaining - current pathway {pathway}")
+
+        test_option = options.pop()
+        test_pos = add_coords(test_option["pos"], test_option["dir"])
+        debug_line(f"Considering option {test_option} at {test_pos}...")
+
+        if test_pos in trapped_nodes or test_pos in free_nodes:
+            break
+        if test_escaped(maze_copy, test_pos):
+            if test_pos in circuit:
+                if test_escaped_on_circuit(maze_copy, test_pos, test_option):
+                    break
+            else:
+                pathway.append(test_pos)
+                break
+
+        test_directions = []
+        if test_pos in circuit:
+            cir_pipe = get_map_point(maze_copy, test_pos)
+            if cir_pipe == 'S':
+                cir_pipe = map_to_pipe(get_valid_directions(maze_copy, test_pos))
+            debug_line(f"Considering intersecting circuit pipe {cir_pipe} at {test_pos} on vector quality {test_option['qual']}")
+
+            test_pipe = { "pos": test_pos, "approach": test_option["qual"] }
+            if test_pipe in trapped_pipes or test_pipe in free_pipes:
+                break
+            considered_pipes.append(test_pipe)
+            test_directions = translate_circuit_flood_options(cir_pipe, test_pos, test_option)
+        else:
+            pathway.append(test_pos)
+            test_directions.append({ "pos": test_pos, "dir": (0, 1), "qual": "R" })
+            test_directions.append({ "pos": test_pos, "dir": (0, -1), "qual": "L" })
+            test_directions.append({ "pos": test_pos, "dir": (1, 0), "qual": "D" })
+            test_directions.append({ "pos": test_pos, "dir": (-1, 0), "qual": "U" })
+
+        for valid_option in consider_valid_flood_options(
+                maze_copy, pathway, considered_pipes, test_directions):
+            options.append(valid_option)
+
+    if (test_escaped(maze_copy, test_pos)
+            or test_pos in free_nodes
+            or test_pipe in free_pipes):
+        escaped = True
+    return escaped, pathway, considered_pipes
+
 # MAIN CODE STARTS HERE
 
 # Set up some base variables
@@ -146,6 +364,11 @@ max_steps = 0
 starting_pos = None
 loop = []
 maze_map = []
+
+inside_nodes = []
+inside_pipes = []
+outside_nodes = []
+outside_pipes = []
 
 # For each line in the file, we extract the maze and throw it into a working
 # array to track the maze.
@@ -177,5 +400,27 @@ while working_pos not in loop:
 
 debug_line(f"Found {len(loop)} nodes in the loop")
 
+# FLOOD!
+for y, row in enumerate(maze_map):
+    for x, col in enumerate(row):
+        working_pos = (y, x)
+        if working_pos not in loop\
+                and working_pos not in inside_nodes\
+                and working_pos not in outside_nodes:
+            # Consider whether (y,x) is inside or outside the loop
+            (node_escaped, nodes_checked, pipes_checked) = attempt_escape(
+                    maze_map, working_pos, loop,
+                    inside_nodes, outside_nodes,
+                    inside_pipes, outside_pipes)
+
+            # Efficiency addition (for what it's worth)
+            if node_escaped:
+                outside_nodes += nodes_checked
+                outside_pipes += pipes_checked
+            else:
+                inside_nodes += nodes_checked
+                inside_pipes += pipes_checked
+
 # Print out the final result
-print(len(loop) / 2)
+print(f"{len(loop) / 2} steps to reach the anti-point of the loop")
+print(f"{len(set(inside_nodes))} trapped nodes and {len(set(outside_nodes))} discovered")
