@@ -1,4 +1,4 @@
-# Day 7 - Mirage Maintenance
+# Day 9 - Mirage Maintenance
 
 This is a simple script which operates on an input file with the following requirements:
 
