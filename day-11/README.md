@@ -155,5 +155,10 @@ This will answer part one by default, but can be overridden to answer part two w
 `-e` flag as follows:
 
 ```bash
-go run . -i input.txt -e 1000000
+go run . -i input.txt -e 999999
 ```
+
+> Note: This program treats the expansion value as an addition to the existing row or
+> column, so an expansion value of `1` adds one more row/column, totalling 2, while an
+> expansion value of `999999` creates the desired total of `1000000` rows and columns
+> of empty space.
