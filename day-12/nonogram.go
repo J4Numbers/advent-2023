@@ -54,7 +54,7 @@ func readFile(filename string) ([]string, error) {
   return fileContents, nil
 }
 
-func breakItemDescriptions(itemDesc []string) []ItemLog {
+func breakItemDescriptions(itemDesc []string, folds int) []ItemLog {
   var itemLogs []ItemLog
   lineSplitter := regexp.MustCompile(ValidLineCheck)
   logLineIndex := lineSplitter.SubexpIndex("LogLine")
@@ -71,31 +71,76 @@ func breakItemDescriptions(itemDesc []string) []ItemLog {
       }
       nonogramIn = append(nonogramIn, convVal)
     }
+
+    var logLine string
+    var nonogramOut []int
+    for j := 0; j < folds; j++ {
+      if j > 0 {
+        logLine += "?"
+      }
+      logLine += splitLn[logLineIndex]
+      nonogramOut = append(nonogramOut, nonogramIn...)
+    }
+
     var tmpLog ItemLog
-    tmpLog.logLine = splitLn[logLineIndex]
-    tmpLog.nonogram = nonogramIn
+    tmpLog.logLine = logLine
+    tmpLog.nonogram = nonogramOut
     itemLogs = append(itemLogs, tmpLog)
   }
   return itemLogs
 }
 
-func addLetter(c chan string, combo string, alphabet string, reqLen int) {
+func generateTestRegex(input string) []*regexp.Regexp {
+  var regexCache []*regexp.Regexp
+  for i := 0; i <= len(input); i++ {
+    var logLinePoss = ""
+    for j := 0; j < i; j++ {
+      if input[j] == '?' {
+        logLinePoss += "[.#]"
+      } else {
+        logLinePoss += fmt.Sprintf("\\%v", string(input[j]))
+      }
+    }
+    logLinePoss = fmt.Sprintf("^%v$", logLinePoss)
+    regexCache = append(regexCache, regexp.MustCompile(logLinePoss))
+  }
+  return regexCache
+}
+
+func addLetter(c chan string, combo string, nonogram []int, cache []*regexp.Regexp, minLen int, reqLen int) {
+  if reqLen < minLen || !cache[len(combo)].MatchString(combo) {
+    return
+  }
   if reqLen <= 0 {
     c <- combo
     return
   }
 
-  for _, ch := range alphabet {
-    addLetter(c, combo + string(ch), alphabet, reqLen - 1)
+  if len(nonogram) > 0 {
+    var nextCombo = strings.Repeat("#", nonogram[0])
+    if reqLen > nonogram[0] {
+      nextCombo += "."
+    }
+
+    addLetter(
+      c, combo + nextCombo, nonogram[1:],
+      cache, minLen - len(nextCombo), reqLen - len(nextCombo))
   }
+  addLetter(c, combo + string('.'), nonogram, cache, minLen, reqLen - 1)
 }
 
-func explodeUnknownPossibilities(reqLen int) <-chan string {
+func explodeUnknownPossibilities(nonogram []int, inputLn string, reqLen int) <-chan string {
   c := make(chan string)
+  minLen := 0
+  for i := 0; i < len(nonogram); i++ {
+    minLen += nonogram[i]
+  }
+
+  regexCache := generateTestRegex(inputLn)
 
   go func(c chan string) {
     defer close(c)
-    addLetter(c, "", ".#", reqLen)
+    addLetter(c, "", nonogram, regexCache, minLen + len(nonogram) - 1, reqLen)
   }(c)
 
   return c
@@ -103,40 +148,25 @@ func explodeUnknownPossibilities(reqLen int) <-chan string {
 
 func findValidNonograms(itemLog ItemLog) int {
   var intervals = ``
+  var brokenWidth = 0
   for idx, nonoLen := range itemLog.nonogram {
     if idx > 0 {
       intervals += `\.+`
     }
     intervals += fmt.Sprintf(`#{%v}`, nonoLen)
+    brokenWidth += nonoLen
   }
   intervals = fmt.Sprintf(`^\.*%v\.*$`, intervals)
   validStrRegex := regexp.MustCompile(intervals)
-  unknownLocsRegex := regexp.MustCompile(`\?+`)
-
-  unknownLocs := unknownLocsRegex.FindAllStringIndex(itemLog.logLine, -1)
-  var unknownLens []int
-  var spaceLen = 0
-  for _, unknownLoc := range unknownLocs {
-    unknownLens = append(unknownLens, unknownLoc[1] - unknownLoc[0])
-    spaceLen += unknownLoc[1] - unknownLoc[0]
-  }
 
   var count = 0
-  for possibility := range explodeUnknownPossibilities(spaceLen) {
-    var line =  itemLog.logLine
-    var startIdx = 0
-    for _, uLen := range unknownLens {
-      line = strings.Replace(line, strings.Repeat("?", uLen), possibility[startIdx:startIdx+uLen], 1)
-      startIdx += uLen
-    }
-    debugLine(fmt.Sprintf("Comparing candidate %v against regex %v", line, intervals))
-    if validStrRegex.MatchString(line) {
-      debugLine(fmt.Sprintf("Successfully discovered candidate %v", line))
+  for possibility := range explodeUnknownPossibilities(itemLog.nonogram, itemLog.logLine, len(itemLog.logLine)) {
+    debugLine(fmt.Sprintf("Comparing candidate %v against regex %v", possibility, intervals))
+    if validStrRegex.MatchString(possibility) {
+      debugLine(fmt.Sprintf("Successfully discovered candidate %v", possibility))
       count++
     }
   }
-  //fmt.Println(hashLocs)
-  //fmt.Println(unknownLocs)
   return count
 }
 
@@ -144,7 +174,9 @@ func findValidNonograms(itemLog ItemLog) int {
 func main() {
   // Do some initial CLI parsing to figure out what the requested operation is.
   var filename string
+  var folds int
   flag.StringVar(&filename, "i", "input.txt", "Specify input file for the program")
+  flag.IntVar(&folds, "f", 1, "Number of times to repeat a given item line")
   flag.BoolVar(&debug, "debug", false, "Enable debug logging")
   flag.Parse()
 
@@ -158,7 +190,7 @@ func main() {
   var approaches = 0
 
   // Break each line into its line description and the broken spring lengths
-  itemLog := breakItemDescriptions(fileContents)
+  itemLog := breakItemDescriptions(fileContents, folds)
   debugLine(fmt.Sprintf("%v", itemLog))
 
   for _, item := range itemLog {
