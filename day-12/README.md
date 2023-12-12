@@ -83,6 +83,34 @@ arrangements.
 
 ## Part two
 
+Alternatively, the puzzle input needs to be unfolded in each case. This can be done by
+doubling the log line with _five_ copies of itself (separated by `?`) and replace the list
+of contiguous groups of damaged items with five copies of itself (separated by `,`).
+
+So, this row:
+
+`.# 1`
+
+Would become:
+
+`.#?.#?.#?.#?.# 1,1,1,1,1`
+
+The first line of the above example would become:
+
+`???.###????.###????.###????.###????.### 1,1,3,1,1,3,1,1,3,1,1,3,1,1,3`
+
+In the above example, after unfolding, the number of possible arrangements for some rows
+is now much larger:
+
+* `???.### 1,1,3` - 1 arrangement
+* `.??..??...?##. 1,1,3` - 16384 arrangements
+* `?#?#?#?#?#?#?#? 1,3,1,6` - 1 arrangement
+* `????.#...#... 4,1,1` - 16 arrangements
+* `????.######..#####. 1,6,5` - 2500 arrangements
+* `?###???????? 3,2,1` - 506250 arrangements
+
+After unfolding, adding all the possible arrangement counts together produces `525152`.
+
 ## This script
 
 This script uses Go and can be run with the following command:
@@ -91,4 +119,10 @@ This script uses Go and can be run with the following command:
 go run . -i input.txt
 ```
 
-This will answer part one as described above.
+This will answer part one as described above. To add additional folds to answer part two,
+the `-f` flag can be set to the number of expansions that need to be carried out on each
+row.
+
+```bash
+go run . -i input.txt -f 5
+```
