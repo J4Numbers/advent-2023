@@ -8,9 +8,11 @@ import (
   "bufio"
   "flag"
   "fmt"
+  "hash/fnv"
   "os"
   "regexp"
   "strconv"
+  "strings"
 )
 
 // ValidLineCheck - the measure of whether a line we read in is a valid puzzle input
@@ -89,117 +91,71 @@ func breakItemDescriptions(itemDesc []string, folds int) []ItemLog {
   return itemLogs
 }
 
-func generateTestRegex(input []int) *regexp.Regexp {
-  var logLinePoss = ``
-  for i := 0; i < len(input); i++ {
-    logLinePoss += fmt.Sprintf(`#{%v}`, input[i])
-    if i < len(input) - 1 {
-      logLinePoss += `\.+`
-    }
+func hashLogAndPuzzle(logLine string, puzzle []int) uint32 {
+  puzzTotal := 0
+  for _, puzzLen := range puzzle {
+    puzzTotal += puzzLen
   }
-  return regexp.MustCompile(fmt.Sprintf(`^\.*%v\.*$`, logLinePoss))
+  workingLine := logLine + strconv.Itoa(puzzTotal)
+  h := fnv.New32a()
+  h.Write([]byte(workingLine))
+  return h.Sum32()
 }
 
-func addLetter(c chan string, combo string, testRegex *regexp.Regexp, nonogram []int, inputStr string, idx int) {
-  if idx >= len(inputStr) {
-    if testRegex.MatchString(combo) {
-      c <- combo
-    }
-    return
+func countArrangements(logLine string, puzzleLayout []int, cache map[uint32]uint64) uint64 {
+  var cacheKey = hashLogAndPuzzle(logLine, puzzleLayout)
+  cacheVal, cacheHit := cache[cacheKey]
+  if cacheHit {
+    debugLine(fmt.Sprintf("Cache hit for (%v,%v) := %v", logLine, puzzleLayout, cacheVal))
+    return cacheVal
   }
 
-  if inputStr[idx] == '?' {
-    addLetter(c, combo + string('.'), testRegex, nonogram, inputStr, idx + 1)
-    addLetter(c, combo + string('#'), testRegex, nonogram, inputStr, idx + 1)
-  } else {
-    addLetter(c, combo + string(inputStr[idx]), testRegex, nonogram, inputStr, idx + 1)
-  }
-}
-
-func explodeUnknownPossibilities(nonogram []int, inputLn string) <-chan string {
-  c := make(chan string)
-
-  go func(c chan string) {
-    defer close(c)
-    addLetter(c, "", generateTestRegex(nonogram), nonogram, inputLn, 0)
-  }(c)
-
-  return c
-}
-
-func calculateMinimumNonogramLength(nonogram []int) int {
-  var minLen = 0
-  for _, nonLen := range(nonogram) {
-    minLen += nonLen
-  }
-  return minLen + len(nonogram) - 1
-}
-
-func containCalculation(c chan []ItemLog, ongoingSplit []ItemLog, splitStrings []string, nonograms []int, strIdx int, nonoFromIdx int) {
-  if strIdx >= len(splitStrings) && nonoFromIdx < len(nonograms) {
-    return
-  }
-  if nonoFromIdx >= len(nonograms) && strIdx >= len(splitStrings) {
-    c <- ongoingSplit
-    return
-  }
-
-  var blankLog ItemLog
-  blankLog.logLine = splitStrings[strIdx]
-
-  containCalculation(c, append(ongoingSplit, blankLog), splitStrings, nonograms, strIdx + 1, nonoFromIdx)
-  for count := nonoFromIdx + 1; count <= len(nonograms); count++ {
-    var splitNonos []int
-    if count == len(nonograms) {
-      splitNonos = nonograms[nonoFromIdx:]
+  if len(logLine) == 0 {
+    if len(puzzleLayout) > 0 {
+      return 0
     } else {
-      splitNonos = nonograms[nonoFromIdx:count]
-    }
-    workingLen := calculateMinimumNonogramLength(splitNonos)
-
-    if workingLen <= len(splitStrings[strIdx]) {
-      var splitLog ItemLog
-      splitLog.logLine = splitStrings[strIdx]
-      splitLog.nonogram = splitNonos
-      containCalculation(c, append(ongoingSplit, splitLog), splitStrings, nonograms, strIdx + 1, count)
+      return 1
     }
   }
-}
 
-func explodeCanContain(splitStrings []string, nonograms []int) <-chan []ItemLog {
-  c := make(chan []ItemLog)
-
-  var canContain []ItemLog
-
-  go func(c chan []ItemLog) {
-    defer close(c)
-    containCalculation(c, canContain, splitStrings, nonograms, 0, 0)
-  }(c)
-
-  return c
-}
-
-func findValidNonograms(itemLog ItemLog) int {
-  possibilityAreas := regexp.MustCompile(`[#?]+`).FindAllString(itemLog.logLine, -1)
-  fmt.Println(itemLog.nonogram)
-  fmt.Println(possibilityAreas)
-
-  var count = 0
-
-  for logItem := range explodeCanContain(possibilityAreas, itemLog.nonogram) {
-    var logAppr = 1
-    for _, splitLog := range logItem {
-      var possCount = 0
-      for poss := range explodeUnknownPossibilities(splitLog.nonogram, splitLog.logLine) {
-        debugLine(fmt.Sprintf("%v -> %v -> %v", logItem, splitLog, poss))
-        possCount += 1
+  var chrPtr = logLine[0]
+  if chrPtr == '.' {
+    var ptrIdx int
+    for ptrIdx = 0; ptrIdx < len(logLine); ptrIdx++ {
+      if logLine[ptrIdx] != '.' {
+        break
       }
-      logAppr *= possCount
     }
-    count += logAppr
+    cache[cacheKey] = countArrangements(logLine[ptrIdx:], puzzleLayout, cache)
+
+  } else if chrPtr == '?' {
+    cache[cacheKey] = countArrangements(logLine[1:], puzzleLayout, cache) + countArrangements("#" + logLine[1:], puzzleLayout, cache)
+
+  } else if chrPtr == '#' {
+    if len(puzzleLayout) > 0 {
+      lenToCheck := puzzleLayout[0]
+      if lenToCheck <= len(logLine) && !strings.ContainsRune(logLine[0:lenToCheck], '.') {
+        if lenToCheck == len(logLine) {
+          if len(puzzleLayout) > 1 {
+            return 0
+          } else {
+            return 1
+          }
+        }
+        if logLine[lenToCheck] == '#' {
+          return 0
+        }
+        cache[cacheKey] = countArrangements(logLine[lenToCheck+1:], puzzleLayout[1:], cache)
+      } else {
+        return 0
+      }
+    } else {
+      return 0
+    }
   }
 
-  return count
+  debugLine(fmt.Sprintf("Cache store for (%v,%v) := %v", logLine, puzzleLayout, cache[cacheKey]))
+  return cache[cacheKey]
 }
 
 // Main function to kick the work
@@ -219,14 +175,15 @@ func main() {
     os.Exit(1)
   }
 
-  var approaches = 0
+  var approaches uint64 = 0
 
   // Break each line into its line description and the broken spring lengths
   itemLog := breakItemDescriptions(fileContents, folds)
   debugLine(fmt.Sprintf("%v", itemLog))
 
   for _, item := range itemLog {
-    var apprCount = findValidNonograms(item)
+    var cache = make(map[uint32]uint64)
+    var apprCount = countArrangements(item.logLine, item.nonogram, cache)
     debugLine(fmt.Sprintf("%v found %v approaches", item, apprCount))
     approaches += apprCount
   }
