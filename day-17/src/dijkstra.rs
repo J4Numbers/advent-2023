@@ -4,9 +4,8 @@ use std::collections::{HashMap, HashSet};
 #[derive(Debug, PartialEq, Clone)]
 pub(crate) struct Node {
     pub(crate) coord: (usize, usize),
-    pub(crate) min_dist: i32,
     pub(crate) connections: Vec<Connection>,
-    pub(crate) history: History,
+    pub(crate) history: Vec<History>,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -16,17 +15,24 @@ pub(crate) struct Connection {
     pub(crate) direction: (i8, i8),
 }
 
+#[derive(Debug, PartialEq, Clone, Copy, Eq, Hash)]
+pub(crate) struct Vector {
+    pub(crate) direction: (i8, i8),
+    pub(crate) distance: u8,
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub(crate) struct History {
     pub(crate) visited_nodes: Vec<(usize, usize)>,
-    pub(crate) current_line: (i8, i8),
+    pub(crate) distance: i32,
+    pub(crate) vector: Vector,
 }
 
 pub(crate) fn explode_input_map(input_map: &Vec<String>) -> HashMap<(usize, usize), Node> {
     let mut tile_map: HashMap<(usize, usize), Node> = HashMap::new();
     for y_val in 0..input_map.len() {
         for x_val in 0..input_map[y_val].len() {
-            let new_node = Node { coord: (x_val, y_val), connections: vec![], min_dist: 999999, history: History{ visited_nodes: vec![], current_line: (0, 0) } };
+            let new_node = Node { coord: (x_val, y_val), connections: vec![], history: vec![] };
             tile_map.insert((x_val, y_val), new_node);
         }
     }
@@ -60,55 +66,117 @@ pub(crate) fn explode_input_map(input_map: &Vec<String>) -> HashMap<(usize, usiz
     return tile_map;
 }
 
-fn test_ongoing_direction(history: &History, next_step: Connection) -> (bool, (i8, i8)) {
-    let new_vector: (i8, i8);
-    if (history.current_line.0 > 0 && next_step.direction.0 > 0) || (history.current_line.0 < 0 && next_step.direction.0 < 0) || (history.current_line.1 > 0 && next_step.direction.1 > 0) || (history.current_line.1 < 0 && next_step.direction.1 < 0) {
-        new_vector = (history.current_line.0 + next_step.direction.0, history.current_line.1 + next_step.direction.1);
-    } else {
-        new_vector = next_step.direction;
-    }
-    let outcome = !history.visited_nodes.contains(&next_step.to_node) && new_vector.0.abs() < 4 && new_vector.1.abs() < 4;
+fn test_ongoing_direction(history: &History, next_step: Connection) -> (bool, History) {
+    let mut updated_history = History{ visited_nodes: history.visited_nodes.to_vec(), distance: history.distance, vector: history.vector };
+    updated_history.visited_nodes.push(next_step.to_node);
+    updated_history.distance = updated_history.distance + next_step.weight as i32;
 
-    return (outcome, new_vector);
+    if history.vector.direction.0 == next_step.direction.0 && history.vector.direction.1 == next_step.direction.1 {
+        updated_history.vector.distance = updated_history.vector.distance + 1;
+    } else {
+        updated_history.vector.direction = next_step.direction;
+        updated_history.vector.distance = 1;
+    }
+
+    let outcome = !history.visited_nodes.contains(&next_step.to_node) && updated_history.vector.distance < 4;
+
+    return (outcome, updated_history);
 }
 
-fn seek_lowest_unvisited(unvisited_nodes: &HashSet<(usize, usize)>, node_map: &HashMap<(usize, usize), Node>) -> (usize, usize) {
-    let mut low_val: i32 = 999999999;
-    let mut low_node: (usize, usize) = (0, 0);
+fn seek_lowest_unvisited(nodes_to_check: &mut HashSet<((usize, usize), usize)>, node_map: &HashMap<(usize, usize), Node>) -> ((usize, usize), usize) {
+    let mut low_dist: i32 = i32::MAX;
+    let mut low_dir: u8 = u8::MAX;
+    let mut low_node: ((usize, usize), usize) = ((0, 0), 0);
 
-    for tile in unvisited_nodes {
-        if node_map.get(&tile).unwrap().min_dist < low_val {
-            low_val = node_map.get(&tile).unwrap().min_dist;
-            low_node = (tile.0, tile.1);
+    let immutable_copy: &HashSet<((usize, usize), usize)> = nodes_to_check;
+    for tile in immutable_copy {
+        let local_history = node_map.get(&tile.0).unwrap().history.get(tile.1).unwrap();
+        let test_dist = local_history.distance;
+        if test_dist < low_dist {
+            low_dist = test_dist;
+            low_dir = local_history.vector.distance;
+            low_node = *tile;
+        } else if test_dist == low_dist {
+            let test_dir = local_history.vector.distance;
+            if test_dir < low_dir {
+                low_dir = test_dir;
+                low_node = *tile;
+            }
         }
     }
 
+    nodes_to_check.remove(&low_node);
     return low_node;
 }
 
-pub(crate) fn perform_algorithm<'a>(node_map: &'a mut HashMap<(usize, usize), Node>, start_node: &(usize, usize)) -> &'a HashMap<(usize, usize), Node> {
-    node_map.get_mut(start_node).unwrap().min_dist = 0;
+fn find_lowest_history_dist(history_log: &Vec<History>) -> i32 {
+    let mut low = i32::MAX;
+
+    for hist in history_log {
+        if hist.distance < low {
+            low = hist.distance;
+        }
+    }
+
+    return low;
+}
+
+fn reduce_options(nodes_to_check: &HashSet<((usize, usize), usize)>, node_map: &HashMap<(usize, usize), Node>) -> HashSet<((usize, usize), usize)> {
+    let mut seen_mapping: HashMap<((usize, usize), Vector), usize> = HashMap::new();
+
+    for check_node in nodes_to_check {
+        let local_history: &History = node_map.get(&check_node.0).unwrap().history.get(check_node.1).unwrap();
+        if !seen_mapping.contains_key(&(check_node.0, local_history.vector)) {
+            seen_mapping.insert((check_node.0, local_history.vector), check_node.1);
+        }
+        let winning_history: &History = &node_map.get(&check_node.0).unwrap().history.get(*seen_mapping.get(&(check_node.0, local_history.vector)).unwrap()).unwrap();
+        if local_history.distance < winning_history.distance {
+            seen_mapping.insert((check_node.0, local_history.vector), check_node.1);
+        }
+    }
+
+    return seen_mapping.keys().fold(HashSet::new(), |mut acc, k| {
+        acc.insert((k.0, *seen_mapping.get(k).unwrap()));
+        return acc;
+    });
+}
+
+pub(crate) fn perform_algorithm<'a>(node_map: &'a mut HashMap<(usize, usize), Node>, start_node: &(usize, usize), goal_node: &(usize, usize)) -> &'a HashMap<(usize, usize), Node> {
+    node_map.get_mut(start_node).unwrap().history.push(History {visited_nodes: vec![*start_node], distance: 0, vector: Vector { direction: (0, 0), distance: 0 }});
     println!("Starting from node {:?} with distance of 0", start_node);
 
-    let mut visited_nodes: HashSet<(usize, usize)> = node_map.keys().cloned().collect();
+    let mut nodes_to_check: HashSet<((usize, usize), usize)> = HashSet::new();
+    nodes_to_check.insert((*start_node, 0));
 
-    while !visited_nodes.is_empty() {
-        let lowest_node = seek_lowest_unvisited(&visited_nodes, node_map);
-        println!("Inspecting node {:?} with current distance of {:?} :: {:?}", lowest_node, node_map.get(&lowest_node).unwrap().min_dist, node_map.get(&lowest_node).unwrap().history);
+    while !nodes_to_check.is_empty() {
+        let lowest_node = seek_lowest_unvisited(&mut nodes_to_check, node_map);
+        let dist_from_goal = (goal_node.0 - lowest_node.0.0, goal_node.1 - lowest_node.0.1);
+        println!("Inspecting node {:?} on approach {:?} - {:?} options remaining - {:?} coords from goal", lowest_node.0, lowest_node.1, nodes_to_check.len(), dist_from_goal);
 
-        for conn in node_map.get(&lowest_node).unwrap().connections.to_vec() {
-            println!("Comparing connection from {:?} to {:?} with weight of {:?}, resulting in a weight of {:?}", lowest_node, conn.to_node, conn.weight, node_map.get(&lowest_node).unwrap().min_dist + conn.weight as i32);
-            let (valid_history, updated_vector) = test_ongoing_direction(&node_map.get(&lowest_node).unwrap().history, conn);
-            if valid_history && (node_map.get(&lowest_node).unwrap().min_dist + conn.weight as i32) < node_map.get(&conn.to_node).unwrap().min_dist {
-                let mut newly_visited_node = node_map.get(&lowest_node).unwrap().history.visited_nodes.to_vec();
-                let new_weight = node_map.get(&lowest_node).unwrap().min_dist + conn.weight as i32;
-                let hop_node = node_map.get_mut(&conn.to_node).unwrap();
-                newly_visited_node.push(conn.to_node);
-                hop_node.min_dist = new_weight;
-                hop_node.history = History{ visited_nodes: newly_visited_node, current_line: updated_vector };
+        if lowest_node.0 == *goal_node {
+            break;
+        }
+
+        let local_history = node_map.get(&lowest_node.0).unwrap().history.get(lowest_node.1).unwrap().clone();
+
+        // For each connection to this node...
+        for conn in node_map.get(&lowest_node.0).unwrap().connections.to_vec() {
+            let (can_continue, min_history) = test_ongoing_direction(&local_history, conn);
+
+            // If we can take another step in this direction - and the weight of the node would be
+            // improved by connecting to it now...
+            if can_continue {
+                let challenge_dist = find_lowest_history_dist(&node_map.get(&conn.to_node).unwrap().history.to_vec());
+
+                if min_history.distance -5 < challenge_dist {
+                    let hop_node = node_map.get_mut(&conn.to_node).unwrap();
+                    hop_node.history.push(min_history);
+                    nodes_to_check.insert((conn.to_node, hop_node.history.len() - 1));
+                }
             }
         }
-        visited_nodes.remove(&lowest_node);
+
+        nodes_to_check = reduce_options(&nodes_to_check, node_map);
     }
 
     return node_map;
