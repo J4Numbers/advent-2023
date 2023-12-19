@@ -54,6 +54,29 @@ Leading to a heat loss of only `102`.
 
 ## Part two
 
+Alternatively, the minimum distance travelled in a straight line must be 4 (including stopping
+at the end), and the maximum distance travelled in a straight mine must be 10.
+
+In the above example, the updated min and max dists could follow this path to minimize heat loss:
+
+```text
+2>>>>>>>>1323
+32154535v5623
+32552456v4254
+34465858v5452
+45466578v>>>>
+143859879845v
+445787698776v
+363787797965v
+465496798688v
+456467998645v
+122468686556v
+254654888773v
+432267465553v
+```
+
+In the above example, an ultra crucible would incur the minimum possible heat loss of `94`.
+
 ## This script
 
 This script uses Rust and can be run with the following command:
@@ -62,4 +85,8 @@ This script uses Rust and can be run with the following command:
 cargo run -- -i input.txt
 ```
 
-This will answer part one as described above.
+This will answer part one as described above. To perform part two, add the `--ultra` flag.
+
+```bash
+cargo run -- -i input.txt --ultra
+```

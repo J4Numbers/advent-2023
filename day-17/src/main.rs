@@ -10,6 +10,9 @@ use crate::dijkstra::{History, Vector};
 struct ProgArgs {
     #[arg(short, long)]
     input: String,
+
+    #[arg(long, default_value_t = false)]
+    ultra: bool,
 }
 
 fn lookup_minimum_history_val(histories: &Vec<dijkstra::History>) -> dijkstra::History {
@@ -27,14 +30,18 @@ fn main() {
     let args = ProgArgs::parse();
     let map_contents = fileio::read_file(args.input);
 
+    // Set some basic constants up
     let start_node: (usize, usize) = (0, 0);
     let goal_node = (map_contents[0].len() - 1, map_contents.len() - 1);
 
+    // Explode the file into a node graph and run the modified dijkstra algorithm over it
     let mut tile_connections = dijkstra::explode_input_map(&map_contents);
-    dijkstra::perform_algorithm(&mut tile_connections, &start_node, &goal_node);
+    dijkstra::perform_algorithm(&mut tile_connections, &start_node, &goal_node, args.ultra);
 
+    // Find the lowest history node attached to our goal
     let min_hist = lookup_minimum_history_val(&tile_connections.get(&goal_node).unwrap().history);
 
+    // Print out the history and a representation of the graph.
     println!("Minimum history value found was {:?}", min_hist);
 
     println!();
